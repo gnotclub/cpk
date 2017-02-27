@@ -2,28 +2,38 @@
 
 OUTPUT_DIR="deps"
 
+
 usage() {
     echo "cpk: usage"
     exit 0;
 }
 
 install() {
-    if [ ! -f ".metadata" ]; then
-        echo "No .metadata file."
+    local directory="$1"
+    if [ ! -f "$directory/.depends" ]; then
+        echo "No .depends file."
         return
     fi
-    . "$PWD/.metadata"
-    curl --location -O "$DEPS"     
-    unzip "$(basename $DEPS)" -d "$OUTPUT_DIR"
-}
+    while IFS= read line; do
+        if echo "$line" | grep -q "git://"; then
+            git submodule add "$line" "$OUTPUT_DIR/$(basename $line)"
+            git submodule init
+            git submodule update
+        else
+            curl -q --location -O "$line"     
+            unzip -q -u "$(basename $line)" -d "$OUTPUT_DIR" 
+            rm "$(basename $line)"
+        fi
+    done < "$directory/.depends"
+} 
 
 while getopts "o:" flag; do
-   case $flag in
-       o ) OUTPUT_DIR=$OPTARG
-           ;;
-       ? ) usage $0 ;;
-   esac 
+    case $flag in
+        o ) OUTPUT_DIR=$OPTARG
+            ;;
+        ? ) usage $0 ;;
+    esac 
 done
 shift $(( OPTIND - 1 ))
 
-install
+install "$PWD"
