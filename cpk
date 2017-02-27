@@ -3,14 +3,21 @@
 OUTPUT_DIR="deps"
 
 usage() {
-    echo "$(basename $0})"
+    echo "cpk: usage"
+    exit 0;
 }
 
 install() {
-    true;
+    if [ ! -f ".metadata" ]; then
+        echo "No .metadata file."
+        return
+    fi
+    . "$PWD/.metadata"
+    curl --location -O "$DEPS"     
+    unzip "$(basename $DEPS)" -d "$OUTPUT_DIR"
 }
 
-while getopt "o" flag; do
+while getopts "o:" flag; do
    case $flag in
        o ) OUTPUT_DIR=$OPTARG
            ;;
@@ -19,4 +26,4 @@ while getopt "o" flag; do
 done
 shift $(( OPTIND - 1 ))
 
-usage $0
+install
