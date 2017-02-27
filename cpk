@@ -1,0 +1,22 @@
+#!/bin/sh
+
+OUTPUT_DIR="deps"
+
+usage() {
+    echo "$(basename $0})"
+}
+
+install() {
+    true;
+}
+
+while getopt "o" flag; do
+   case $flag in
+       o ) OUTPUT_DIR=$OPTARG
+           ;;
+       ? ) usage $0 ;;
+   esac 
+done
+shift $(( OPTIND - 1 ))
+
+usage $0
