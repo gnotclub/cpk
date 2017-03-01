@@ -1,7 +1,9 @@
-#!/bin/sh -x
+#!/bin/sh
 
-OUTPUT_DIR="deps"
+OUTPUT_DIR="$PWD/deps"
 TMP_FILE_TMPL="/tmp/cpk.XXXX"
+TMP_DONE_TMPL="/tmp/cpk-done.XXXX"
+TMP_DONE=""
 TMP_FILE=""
 
 usage() {
@@ -9,39 +11,56 @@ usage() {
 	exit 0;
 }
 
-install() {
+install_pkg() {
 	local directory="$1"
+	echo "Entering $directory"
 	if [ ! -f "$directory/.depends" ]; then
 		echo "No .depends file."
 		return
 	fi
-	while IFS= read line; do
-		if grep -F "$line" "$TMP_FILE" > /dev/null 2>&1; then
+	if grep -Fq "$line" "$TMP_DONE"; then
+		echo "$line" "already installed"
+		return
+	fi
+	local line=""
+	while IFS= read -r line; do
+		if grep -Fq "$line" "$TMP_FILE"; then
 			echo "Circular dependency detected: \"$line\""
 			continue
 		fi
 		echo "$line" >> "$TMP_FILE"
+		local install_to="$(basename "$line")"
 		if echo "$line" | grep -q "git://"; then
-			git submodule add "$line" "$OUTPUT_DIR/$(basename "$line")"
+			echo "Fetching package $install_to from git"
+			git submodule add "$line" "$OUTPUT_DIR/$install_to"
 			git submodule init
 			git submodule update
 		elif stat "$line" > /dev/null 2>&1; then
-			cp -R "$line" "$OUTPUT_DIR/$(basename "$line")"
+			echo "Fetching package $install_to from local file system"
+			mkdir -p "$OUTPUT_DIR/$install_to"
+			rm -rf "$OUTPUT_DIR/$install_to"
+			cp -a "$line" "$OUTPUT_DIR/$install_to"
 		else
+			echo "Fetching package $install_to with curl"
 			curl -q --location -O "$line"
-			unzip -q -u "$(basename "$line")" -d "$OUTPUT_DIR"
-			rm "$(basename "$line")"
+			unzip -q -u "$install_to" -d "$OUTPUT_DIR"
+			rm "$install_to"
 		fi
+		install_pkg "$OUTPUT_DIR/$install_to"
 		# escape all slashes
 		local escaped_line="$(echo "$line" | sed 's/\//\\\//g')"
 		sed -i '/'"$escaped_line"'/d' "$TMP_FILE"
+		echo "$line" >> "$TMP_DONE"
 	done < "$directory/.depends"
 }
 
 do_install() {
 	TMP_FILE="$(mktemp "$TMP_FILE_TMPL")"
-	install "$1"
+	TMP_DONE="$(mktemp "$TMP_DONE_TMPL")"
+	mkdir -p "$OUTPUT_DIR"
+	install_pkg "$1"
 	rm "$TMP_FILE"
+	rm "$TMP_DONE"
 }
 
 while getopts "o:" flag; do
