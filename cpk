@@ -87,11 +87,11 @@ parse_depends() {
         echo "$line" >> "$TMP_FILE"
         local install_to="$(basename "$line")"
 
-        #Clone it from git if it's a git url
+        # Clone it from git if it's a git url
         if echo "$line" | grep -q "git://"; then
             install_from_git $install_to
         elif stat "$line" > /dev/null 2>&1; then
-            install_from_fs "$line"
+            install_from_fs "$line" "$install_to"
         else
             verbose_echo "Fetching package $install_to with curl"
             curl -q --location -O "$line"
@@ -126,8 +126,8 @@ while getopts "o:v" flag; do
         v ) VERBOSE=1
             ;;
         ? ) usage $0 ;;
-    esac
-done
+    # esac
+# done
 shift $(( OPTIND - 1 ))
 
 do_install "$PWD"
