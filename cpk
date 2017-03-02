@@ -53,7 +53,10 @@ install_from_fs(){
 unpack_archive(){
     local archive=$1
     case $archive in
-        *.tar.gz) tar -xzf "$archive" -C "$OUTPUT_DIR" ;;
+        *.tar.bz2|*.tbz2) tar -xjf "$archive" -C "$OUTPUT_DIR" ;;
+        *.tar.gz|*.tgz) tar -xzf "$archive" -C "$OUTPUT_DIR" ;;
+        *.tar.xz) tar -xJf "$archive" -C "$OUTPUT_DIR" ;;
+        *.tar) tar -xf "$archive" -C "$OUTPUT_DIR" ;;
         *.zip) unzip -q -u "$archive" -d "$OUTPUT_DIR" ;;
         *) echo "Unsupported archive: $archive" ;;
     esac
