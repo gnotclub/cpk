@@ -2,8 +2,9 @@
 
 ## Short description
 
-`cpk` downloads a library and its dependencies in a folder and executes the libraries' build scripts
-to build static libraries.
+`cpk` downloads a library and its dependencies in a folder. To maintain
+simplicity and power, it is the user's job to do some trivial tasks, like
+compiling the libraries.
 
 ## Usage
 
@@ -23,11 +24,19 @@ NAME=
 DESCRIPTION=
 VERSION=
 BUILD=
-DEP=
-DEP=
+```
+
+`BUILD` points to a script that prepares the library, if needed.
+
+If a library has dependencies, it needs a `.depends` file, where each line
+contains a URL to a dependency.
+
+```
+git://github.com/gnotclub/hello-cpk
+https://gnot.club/cpks/dlist.tar.gz
 ...
 ```
 
-Each dependency has a `DEP=` line.
-
-`BUILD` points to a script that builds a static library.
+The `.depends` file is required for projects that use `cpk`. Although projects
+themselves are not `cpk` libraries, `cpk` will read the `.depends` file and
+install the libraries in the specified folder.
