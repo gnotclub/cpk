@@ -5,70 +5,128 @@ TMP_FILE_TMPL="/tmp/cpk.XXXX"
 TMP_DONE_TMPL="/tmp/cpk-done.XXXX"
 TMP_DONE=""
 TMP_FILE=""
+VERBOSE=""
 
 usage() {
-	echo "cpk: usage"
-	exit 0;
+    echo "cpk: usage"
+    exit 0;
 }
 
-install_pkg() {
-	local directory="$1"
-	echo "Entering $directory"
-	if [ ! -f "$directory/.depends" ]; then
-		echo "No .depends file."
-		return
-	fi
-	if grep -Fq "$line" "$TMP_DONE"; then
-		echo "$line" "already installed"
-		return
-	fi
-	local line=""
-	while IFS= read -r line; do
-		if grep -Fq "$line" "$TMP_FILE"; then
-			echo "Circular dependency detected: \"$line\""
-			continue
-		fi
-		echo "$line" >> "$TMP_FILE"
-		local install_to="$(basename "$line")"
-		if echo "$line" | grep -q "git://"; then
-			echo "Fetching package $install_to from git"
-			git submodule add "$line" "$OUTPUT_DIR/$install_to"
-			git submodule init
-			git submodule update
-		elif stat "$line" > /dev/null 2>&1; then
-			echo "Fetching package $install_to from local file system"
-			mkdir -p "$OUTPUT_DIR/$install_to"
-			rm -rf "$OUTPUT_DIR/$install_to"
-			cp -a "$line" "$OUTPUT_DIR/$install_to"
-		else
-			echo "Fetching package $install_to with curl"
-			curl -q --location -O "$line"
-			unzip -q -u "$install_to" -d "$OUTPUT_DIR"
-			rm "$install_to"
-		fi
-		install_pkg "$OUTPUT_DIR/$install_to"
-		# escape all slashes
-		local escaped_line="$(echo "$line" | sed 's/\//\\\//g')"
-		sed -i '/'"$escaped_line"'/d' "$TMP_FILE"
-		echo "$line" >> "$TMP_DONE"
-	done < "$directory/.depends"
+## Only echo if we have -v turned on.
+verbose_echo () {
+    if [ $VERBOSE ]; then
+        echo $@
+    fi
+}
+
+install_from_git(){
+    local git_url="$1"
+    local install_to="$(basename "$git_url")"
+    verbose_echo "Fetching package $install_to from git"
+    git submodule add "$git_url" "$OUTPUT_DIR/$install_to"
+    git submodule init
+    git submodule update
+}
+
+install_from_fs(){
+    local node="$1"
+    local pkgname="$2"
+    verbose_echo "Fetching package $pkgname from mounted file system"
+
+    # Clean out anything that's there
+    if [ -d "$OUTPUT_DIR/$pkgname" ]; then
+        rm -rf "${OUTPUT_DIR:?}/$pkgname"
+        mkdir -p "$OUTPUT_DIR/$pkgname"
+    elif [ -f "$OUTPUT_DIR/$pkgname" ]; then
+        rm -f "$OUTPUT_DIR/$pkgname"
+    fi
+
+    if [ -d "$node" ]; then
+        # Just copy it if it's a directory
+        cp -a "$node" "$OUTPUT_DIR/$pkgname"
+    elif [ -f "$node" ]; then
+        # If it's a file...
+        unpack_archive "$node"
+    fi
+}
+
+unpack_archive(){
+    local archive=$1
+    case $archive in
+        *.tar.gz) tar -xzf "$archive" -C "$OUTPUT_DIR" ;;
+        *.zip) unzip -q -u "$archive" -d "$OUTPUT_DIR" ;;
+        *) echo "Unsupported archive: $archive" ;;
+    esac
+}
+
+parse_depends() {
+    local directory="$1"
+    verbose_echo "Entering $directory"
+
+    # Check if the depends file is in this directory.
+    if [ ! -f "$directory/.depends" ]; then
+        echo "No .depends file."
+        return
+    fi
+
+    local line=""
+    while IFS= read -r line; do
+        # Bail out if this package is already installed.
+        if grep -Fq "$line" "$TMP_DONE"; then
+            verbose_echo "$line" "already installed"
+            return
+        fi
+
+        # Bail out if there is a circular dependency too
+        if grep -Fq "$line" "$TMP_FILE"; then
+            verbose_echo "Circular dependency detected: \"$line\""
+            continue
+        fi
+
+        # Now we know we have to actually do something
+        echo "$line" >> "$TMP_FILE"
+        local install_to="$(basename "$line")"
+
+        #Clone it from git if it's a git url
+        if echo "$line" | grep -q "git://"; then
+            install_from_git $install_to
+        elif stat "$line" > /dev/null 2>&1; then
+            install_from_fs "$line"
+        else
+            verbose_echo "Fetching package $install_to with curl"
+            curl -q --location -O "$line"
+            unpack_archive "$install_to"
+            rm "$install_to"
+        fi
+
+        # Recurse into that package too
+        parse_depends "$OUTPUT_DIR/$install_to"
+
+        # escape all slashes
+        local escaped_line="$(echo "$line" | sed 's/\//\\\//g')"
+        sed -i '/'"$escaped_line"'/d' "$TMP_FILE"
+        echo "$line" >> "$TMP_DONE"
+
+    done < "$directory/.depends"
 }
 
 do_install() {
-	TMP_FILE="$(mktemp "$TMP_FILE_TMPL")"
-	TMP_DONE="$(mktemp "$TMP_DONE_TMPL")"
-	mkdir -p "$OUTPUT_DIR"
-	install_pkg "$1"
-	rm "$TMP_FILE"
-	rm "$TMP_DONE"
+    TMP_FILE="$(mktemp "$TMP_FILE_TMPL")"
+    TMP_DONE="$(mktemp "$TMP_DONE_TMPL")"
+    mkdir -p "$OUTPUT_DIR"
+    parse_depends "$1"
+    rm "$TMP_FILE"
+    rm "$TMP_DONE"
 }
 
-while getopts "o:" flag; do
-	case $flag in
-		o ) OUTPUT_DIR=$OPTARG
-			;;
-		? ) usage $0 ;;
-	esac
+while getopts "o:v" flag; do
+    case $flag in
+        o ) OUTPUT_DIR=$OPTARG
+            ;;
+        v ) VERBOSE=1
+            ;;
+        ? ) usage $0 ;;
+    esac
 done
 shift $(( OPTIND - 1 ))
 
