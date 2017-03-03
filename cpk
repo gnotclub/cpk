@@ -15,58 +15,58 @@ VERBOSE=""
 usage() {
 	local program_name="$1"
 	local exit_status="$2"
-    echo "Usage: $program_name [-hv] [-o output_dir]"
-    exit "$exit_status"
+	echo "Usage: $program_name [-hv] [-o output_dir]"
+	exit "$exit_status"
 }
 
 ## Only echo if we have -v turned on.
 verbose_echo () {
-    if [ $VERBOSE ]; then
-        echo $@
-    fi
+	if [ $VERBOSE ]; then
+		echo $@
+	fi
 }
 
 install_from_git(){
-    local git_url="$1"
-    local install_to="$(basename "$git_url")"
-    verbose_echo "Fetching package $install_to from git"
-    git submodule add "$git_url" "$OUTPUT_DIR/$install_to"
-    git submodule init
-    git submodule update
+	local git_url="$1"
+	local install_to="$(basename "$git_url")"
+	verbose_echo "Fetching package $install_to from git"
+	git submodule add "$git_url" "$OUTPUT_DIR/$install_to"
+	git submodule init
+	git submodule update
 }
 
 install_from_fs(){
-    local node="$1"
-    local pkgname="$2"
-    verbose_echo "Fetching package $pkgname from mounted file system"
+	local node="$1"
+	local pkgname="$2"
+	verbose_echo "Fetching package $pkgname from mounted file system"
 
-    # Clean out anything that's there
-    if [ -d "$OUTPUT_DIR/$pkgname" ]; then
-        rm -rf "${OUTPUT_DIR:?}/$pkgname"
-        mkdir -p "$OUTPUT_DIR/$pkgname"
-    elif [ -f "$OUTPUT_DIR/$pkgname" ]; then
-        rm -f "$OUTPUT_DIR/$pkgname"
-    fi
+	# Clean out anything that's there
+	if [ -d "$OUTPUT_DIR/$pkgname" ]; then
+		rm -rf "${OUTPUT_DIR:?}/$pkgname"
+		mkdir -p "$OUTPUT_DIR/$pkgname"
+	elif [ -f "$OUTPUT_DIR/$pkgname" ]; then
+		rm -f "$OUTPUT_DIR/$pkgname"
+	fi
 
-    if [ -d "$node" ]; then
-        # Just copy it if it's a directory
-        cp -a "$node" "$OUTPUT_DIR/$pkgname"
-    elif [ -f "$node" ]; then
-        # If it's a file...
-        unpack_archive "$node"
-    fi
+	if [ -d "$node" ]; then
+		# Just copy it if it's a directory
+		cp -a "$node" "$OUTPUT_DIR/$pkgname"
+	elif [ -f "$node" ]; then
+		# If it's a file...
+		unpack_archive "$node"
+	fi
 }
 
 unpack_archive(){
-    local archive=$1
-    case $archive in
-        *.tar.bz2|*.tbz2) tar -xjf "$archive" -C "$OUTPUT_DIR" ;;
-        *.tar.gz|*.tgz) tar -xzf "$archive" -C "$OUTPUT_DIR" ;;
-        *.tar.xz) tar -xJf "$archive" -C "$OUTPUT_DIR" ;;
-        *.tar) tar -xf "$archive" -C "$OUTPUT_DIR" ;;
-        *.zip) unzip -q -u "$archive" -d "$OUTPUT_DIR" ;;
-        *) echo "Unsupported archive: $archive" ;;
-    esac
+	local archive=$1
+	case $archive in
+		*.tar.bz2|*.tbz2) tar -xjf "$archive" -C "$OUTPUT_DIR" ;;
+		*.tar.gz|*.tgz) tar -xzf "$archive" -C "$OUTPUT_DIR" ;;
+		*.tar.xz) tar -xJf "$archive" -C "$OUTPUT_DIR" ;;
+		*.tar) tar -xf "$archive" -C "$OUTPUT_DIR" ;;
+		*.zip) unzip -q -u "$archive" -d "$OUTPUT_DIR" ;;
+		*) echo "Unsupported archive: $archive" ;;
+	esac
 }
 
 parse_metadata() {
@@ -92,79 +92,79 @@ parse_metadata() {
 }
 
 parse_depends() {
-    local directory="$1"
-    verbose_echo "Entering $directory"
+	local directory="$1"
+	verbose_echo "Entering $directory"
 
-    # Check if the depends file is in this directory.
-    if [ ! -f "$directory/.depends" ]; then
-        echo "${directory} lacks a .depends file."
-        return
-    fi
+	# Check if the depends file is in this directory.
+	if [ ! -f "$directory/.depends" ]; then
+		echo "${directory} lacks a .depends file."
+		return
+	fi
 
-    test -d "$OUTPUT_DIR" || mkdir -p "$OUTPUT_DIR"
-    local line=""
-    while IFS= read -r line; do
-        # Bail out if this package is already installed.
-        if grep -Fq "$line" "$TMP_DONE"; then
-            verbose_echo "$line" "already installed"
-            return
-        fi
+	test -d "$OUTPUT_DIR" || mkdir -p "$OUTPUT_DIR"
+	local line=""
+	while IFS= read -r line; do
+		# Bail out if this package is already installed.
+		if grep -Fq "$line" "$TMP_DONE"; then
+			verbose_echo "$line" "already installed"
+			return
+		fi
 
-        # Bail out if there is a circular dependency too
-        if grep -Fq "$line" "$TMP_FILE"; then
-            verbose_echo "Circular dependency detected: \"$line\""
-            continue
-        fi
+		# Bail out if there is a circular dependency too
+		if grep -Fq "$line" "$TMP_FILE"; then
+			verbose_echo "Circular dependency detected: \"$line\""
+			continue
+		fi
 
-        # Now we know we have to actually do something
-        echo "$line" >> "$TMP_FILE"
-        local install_to="$(basename "$line")"
+		# Now we know we have to actually do something
+		echo "$line" >> "$TMP_FILE"
+		local install_to="$(basename "$line")"
 
-        # Clone it from git if it's a git url
-        if echo "$line" | grep -q "git://"; then
-            install_from_git "$line"
-        elif stat "$line" > /dev/null 2>&1; then
-            install_from_fs "$line" "$install_to"
-        else
-            verbose_echo "Fetching package $install_to with curl"
-            curl -q --location -O "$line"
-            unpack_archive "$install_to"
-            rm "$install_to"
-        fi
+		# Clone it from git if it's a git url
+		if echo "$line" | grep -q "git://"; then
+			install_from_git "$line"
+		elif stat "$line" > /dev/null 2>&1; then
+			install_from_fs "$line" "$install_to"
+		else
+			verbose_echo "Fetching package $install_to with curl"
+			curl -q --location -O "$line"
+			unpack_archive "$install_to"
+			rm "$install_to"
+		fi
 
-        # Recurse into that package too
-        parse_depends "$OUTPUT_DIR/$install_to"
+		# Recurse into that package too
+		parse_depends "$OUTPUT_DIR/$install_to"
 
-        # escape all slashes
-        local escaped_line="$(echo "$line" | sed 's/\//\\\//g')"
-        sed -i '/'"$escaped_line"'/d' "$TMP_FILE"
+		# escape all slashes
+		local escaped_line="$(echo "$line" | sed 's/\//\\\//g')"
+		sed -i '/'"$escaped_line"'/d' "$TMP_FILE"
 
 		parse_metadata "$OUTPUT_DIR/$install_to"
 
-        echo "$line" >> "$TMP_DONE"
+		echo "$line" >> "$TMP_DONE"
 
-    done < "$directory/.depends"
+	done < "$directory/.depends"
 }
 
 do_install() {
-    TMP_FILE="$(mktemp "$TMP_FILE_TMPL")"
-    TMP_DONE="$(mktemp "$TMP_DONE_TMPL")"
-    parse_depends "$1"
-    rm "$TMP_FILE"
-    rm "$TMP_DONE"
+	TMP_FILE="$(mktemp "$TMP_FILE_TMPL")"
+	TMP_DONE="$(mktemp "$TMP_DONE_TMPL")"
+	parse_depends "$1"
+	rm "$TMP_FILE"
+	rm "$TMP_DONE"
 }
 
 while getopts "o:vh" flag; do
-    case $flag in
-        o) OUTPUT_DIR=$OPTARG
-            ;;
-        v) VERBOSE=1
-        	;;
-        h) usage "$0" 0
-        	;;
-        ?) usage "$0" 1
-        	;;
-    esac
+	case $flag in
+		o) OUTPUT_DIR=$OPTARG
+			;;
+		v) VERBOSE=1
+			;;
+		h) usage "$0" 0
+			;;
+		?) usage "$0" 1
+			;;
+	esac
 done
 shift $(( OPTIND - 1 ))
 
