@@ -1,6 +1,11 @@
 #!/bin/sh
+#
+# cpk - simple C Package Manager
+# Copyright (c) 2017 The Gnot Club
+# ISC Licensed
+#
 
-OUTPUT_DIR="$PWD/deps"
+OUTPUT_DIR="deps"
 TMP_FILE_TMPL="/tmp/cpk.XXXX"
 TMP_DONE_TMPL="/tmp/cpk-done.XXXX"
 TMP_DONE=""
@@ -8,8 +13,10 @@ TMP_FILE=""
 VERBOSE=""
 
 usage() {
-    echo "cpk: usage"
-    exit 0;
+	local program_name="$1"
+	local exit_status="$2"
+    echo "Usage: $program_name [-hv] [-o output_dir]"
+    exit "$exit_status"
 }
 
 ## Only echo if we have -v turned on.
@@ -62,6 +69,28 @@ unpack_archive(){
     esac
 }
 
+parse_metadata() {
+	local directory="$1"
+
+	if [ ! -f "$directory/.metadata" ]; then
+		echo "${directory} lacks a .metadata file."
+		return
+	fi
+
+	verbose_echo "Reading metadata for ${directory}."
+	local line=""
+	while IFS= read -r line; do
+		local key="$(echo "$line" | cut -d'=' -f1)"
+		local value="$(echo "$line" | cut -d'=' -f2-)"
+
+		case "$key" in
+			BUILD)
+				echo "$value" | /bin/sh
+				;;
+		esac
+	done < "${directory}/.metadata"
+}
+
 parse_depends() {
     local directory="$1"
     verbose_echo "Entering $directory"
@@ -72,6 +101,7 @@ parse_depends() {
         return
     fi
 
+    test -d "$OUTPUT_DIR" || mkdir -p "$OUTPUT_DIR"
     local line=""
     while IFS= read -r line; do
         # Bail out if this package is already installed.
@@ -108,6 +138,9 @@ parse_depends() {
         # escape all slashes
         local escaped_line="$(echo "$line" | sed 's/\//\\\//g')"
         sed -i '/'"$escaped_line"'/d' "$TMP_FILE"
+
+		parse_metadata "$OUTPUT_DIR/$install_to"
+
         echo "$line" >> "$TMP_DONE"
 
     done < "$directory/.depends"
@@ -116,19 +149,21 @@ parse_depends() {
 do_install() {
     TMP_FILE="$(mktemp "$TMP_FILE_TMPL")"
     TMP_DONE="$(mktemp "$TMP_DONE_TMPL")"
-    mkdir -p "$OUTPUT_DIR"
     parse_depends "$1"
     rm "$TMP_FILE"
     rm "$TMP_DONE"
 }
 
-while getopts "o:v" flag; do
+while getopts "o:vh" flag; do
     case $flag in
-        o ) OUTPUT_DIR=$OPTARG
+        o) OUTPUT_DIR=$OPTARG
             ;;
-        v ) VERBOSE=1
-            ;;
-        ? ) usage $0 ;;
+        v) VERBOSE=1
+        	;;
+        h) usage "$0" 0
+        	;;
+        ?) usage "$0" 1
+        	;;
     esac
 done
 shift $(( OPTIND - 1 ))
