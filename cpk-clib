@@ -1,0 +1,36 @@
+#!/bin/sh
+#
+# Requires jq
+# Converts clibs packages to cpk
+#
+
+var() {
+	local v="$1"
+	local ret="$(jq -r "$1" package.json)"
+
+	test "$ret" = "null" && ret=""
+
+	echo "$ret"
+}
+
+cat <<EOF > .metadata
+NAME=$(var .name)
+DESCRIPTION=$(var .description)
+VERSION=$(var .version)
+BUILD=$(var .install)
+EOF
+
+deps_query='.dependencies | keys_unsorted[] as $k | "\(.[$k]) \($k)"'
+jq -r "$deps_query" package.json |\
+while IFS= read -r dep; do
+	ver="$(echo "$dep" | cut -d' ' -f1)"
+	name="$(echo "$dep" | cut -d' ' -f2-)"
+	is_complete="false"
+	if echo "$name" | grep -E '[^/]+/[^/]+' > /dev/null 2>&1; then
+		is_complete="true"
+	fi
+
+	test "$is_complete" = "false" && name="clibs/${name}"
+
+	printf "https://github.com/%s/archive/%s.tar.gz\n" "$name" "$ver"
+done > .depends

@@ -6,10 +6,10 @@
 #
 
 OUTPUT_DIR="deps"
-TMP_FILE_TMPL="/tmp/cpk.XXXX"
+TMP_TO_DO_TMPL="/tmp/cpk.XXXX"
 TMP_DONE_TMPL="/tmp/cpk-done.XXXX"
 TMP_DONE=""
-TMP_FILE=""
+TMP_TO_DO=""
 VERBOSE=""
 
 usage() {
@@ -111,13 +111,13 @@ parse_depends() {
 		fi
 
 		# Bail out if there is a circular dependency too
-		if grep -Fq "$line" "$TMP_FILE"; then
+		if grep -Fq "$line" "$TMP_TO_DO"; then
 			verbose_echo "Circular dependency detected: \"$line\""
 			continue
 		fi
 
 		# Now we know we have to actually do something
-		echo "$line" >> "$TMP_FILE"
+		echo "$line" >> "$TMP_TO_DO"
 		local install_to="$(basename "$line")"
 
 		# Clone it from git if it's a git url
@@ -137,7 +137,7 @@ parse_depends() {
 
 		# escape all slashes
 		local escaped_line="$(echo "$line" | sed 's/\//\\\//g')"
-		sed -i '/'"$escaped_line"'/d' "$TMP_FILE"
+		sed -i '/'"$escaped_line"'/d' "$TMP_TO_DO"
 
 		parse_metadata "$OUTPUT_DIR/$install_to"
 
@@ -147,10 +147,10 @@ parse_depends() {
 }
 
 do_install() {
-	TMP_FILE="$(mktemp "$TMP_FILE_TMPL")"
+	TMP_TO_DO="$(mktemp "$TMP_TO_DO_TMPL")"
 	TMP_DONE="$(mktemp "$TMP_DONE_TMPL")"
 	parse_depends "$1"
-	rm "$TMP_FILE"
+	rm "$TMP_TO_DO"
 	rm "$TMP_DONE"
 }
 
